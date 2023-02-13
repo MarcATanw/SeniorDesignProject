@@ -1,0 +1,310 @@
+/*
+Rapid Deployment Runway Closure System C Code
+By: Marc Tanwangco, Jomari Paguia, Nicholas Wolford, Sean Connolly
+Benham Aviation Services
+*/
+
+// FANS
+const int fan1 = A2;  // Fan 1
+const int fan2 = A3;  // Fan 2
+const int fan3 = 7; // Fan 3
+const int fan4 = 8; // Fan 4
+const int fan5 = 9; // Fan 5
+int FF1 = 0;  // Fan Flag 1
+int FF2 = 0;  // Fan Flag 2
+int FF3 = 0;  // Fan Flag 3
+int FF4 = 0;  // Fan Flag 4
+int FF5 = 0;  // Fan Flag 5
+
+// MOTORS
+const int M1R1 = 11;  // Motor 1 Relay 1 (DRIVE WHEELS)
+const int M1R2 = 10;  // Motor 1 Relay 2 (DRIVE WHEELS)
+const int M2R1 = 13;  // Motor 2 Relay 1 (SPOOL)
+const int M2R2 = 12;  // Motor 2 Relay 2 (SPOOL)
+const int W1P = 15;  // Number of Pulses for Wheel System (Motor 1)
+const int S2P = 15;  // Number of Pulses for Spool System (Motor 2)
+volatile byte M1C = 0;  // Motor 1 Counter
+volatile byte M2C = 0;  // Motor 2 Counter
+//int MF1 = 0;  // Motor Flag 1
+//int MF2 = 0;  // Motor Flag 2 
+
+// BUTTONS & LEDs
+const int extendbutton = A5;  // Extend Button
+const int retractbutton = A4; // Retract Button
+volatile byte buttonstate1 = digitalRead(extendbutton);    // Button 1 is Associated with Extending
+volatile byte buttonstate2 = digitalRead(retractbutton);   // Button 2 is Associated with Retracting
+volatile byte laststate1 = LOW; // Last Button 1 State
+volatile byte laststate2 = LOW; // Last Button 2 State
+const int retractLED = 6; // Indicates System Received Retract Command
+const int extendLED = 5;  // Indicated System Received Extend/Inflate Command
+volatile byte LEDstate1 = LOW;  // LED 1 State, Associated with extendLED
+volatile byte LEDstate2 = LOW;  // LED 2 State, Associated with retractLED
+unsigned long debounceDuration = 50;  // 50 milliseconds
+unsigned long lastchange = 0;
+
+// FLAGS AND COUNTERS
+int FDIF = 0; // Fan Diagnostic Input Flag
+int FSF = 0;  // Fan Status Flag
+int SSF = 0;  // Switch Status Flag
+int BEF = 0;  // Battery Error Flag
+int FEF = 0;  // Fan Error Flag
+int ERF = 0;  // Extend/Retract Flag, Flag 1 = Extend/Flag 0 = Retract
+int ERSF = 0; // Extend/Retract Switch Flag
+//int HECounter = 0;  // Hall Effect Counter
+int testExt;
+int testRet;
+
+// HALL EFFECT SENSORS
+// volatile int HEstate1 = 0;
+// volatile int HEstate2 = 0;
+
+float solarV;
+float batteryV;
+
+/*
+---------------------------------------------------------------------------------
+*/
+
+void loop() {
+  // put your main code here, to run repeatedly:
+
+  if(millis() - lastchange > debounceDuration){	// Section of Code for Extend/Inflate Button
+    buttonstate1 = digitalRead(extendbutton);	// Reads Button Status and Stores into buttonstate1
+    if(buttonstate1 != laststate1){	// Checks If the Button State is not Equal to Last State
+      lastchange = millis();
+      laststate1 = buttonstate1;
+      if(buttonstate1 == LOW){
+        if(LEDstate1 == HIGH){	// When the Button is Pressed
+          LEDstate1 = LOW;
+          extend();	// Goes into Extend Module
+          } 
+          else{
+          LEDstate1 = HIGH;
+          }
+        digitalWrite(extendLED, LEDstate1);
+      }
+    }
+  }
+
+  if(millis() - lastchange > debounceDuration){	// Section of Code for Deflate/Retract Button
+    buttonstate2 = digitalRead(retractbutton);	// Reads Button Status and Stores into buttonstate2
+    if(buttonstate2 != laststate2){	// Checks If the Button State is not Equal to Last State
+      lastchange = millis();
+      laststate2 = buttonstate2;
+      if(buttonstate2 == LOW){	// When the Button is Pressed
+        if(LEDstate2 == HIGH){
+          LEDstate2 = LOW;
+          retract();	// Goes into Retract Module
+        } else{
+          LEDstate2 = HIGH;
+        }
+        digitalWrite(retractLED, LEDstate2);
+      }
+    }
+  }
+}
+
+/*
+---------------------------------------------------------------------------------
+*/
+ 
+void extend(){
+  M1C = 0;	// Motor 1 Counter Set to 0
+  M2C = 0;	// Motor 2 Counter Set to 0
+  testExt = 0;	// Extension Set to 0
+  digitalWrite(M1R1, LOW);
+  digitalWrite(M2R1, LOW);
+  digitalWrite(M1R2, HIGH);
+  digitalWrite(M2R2, HIGH);	// Write Motor 1 and 2 Relays 2 to HIGH to Extend the Fabric by Having the Wheels and Spool Turn
+  delay(120000);	// Drive the Wheels and Spool for 2 Minutes
+
+  while(testExt <= 0){	// While Loop Allows for the Button to be Pressed Again to Turn Off All Motors
+    if(millis() - lastchange > debounceDuration){	// Similar If Block From the Loop Module
+      buttonstate1 = digitalRead(extendbutton);
+      if(buttonstate1 == LOW){
+        digitalWrite(M1R1, LOW);
+        digitalWrite(M2R1, LOW);
+        digitalWrite(M1R2, LOW);
+        digitalWrite(M2R2, LOW);	// Turns Off All Motors
+        testExt++;
+      }
+     
+    }
+  }
+
+  
+// Commented Out Hall Effect Sensor Code that Would've Been Used if the Sensors Worked 
+/*  
+  while (M1C <= W1P && M2C <= S2P); {
+    // Do Nothing
+  }
+  if (M1C >= W1P){
+    delay(50);
+    digitalWrite(M1R2, LOW);
+    while(M2C < S2P){
+      // Do Nothing While Other One Finishes
+    }
+    delay(50);
+    digitalWrite(M2R2, LOW);
+  }
+  else { //(M2C >= S2P){  // Commented Out Section is for Using an "if" Statement
+    delay(50);
+    digitalWrite(M2R2, LOW);
+    while(M1C < W1P){
+      // Do Nothing While Other One Finishes
+    }
+    delay(50);
+    digitalWrite(M1R2, LOW);
+  }
+*/  
+  inflate();	// Moves to Inflate Module
+}
+
+/*
+---------------------------------------------------------------------------------
+*/
+
+void inflate(){
+  
+  digitalWrite(fan1, HIGH);
+  digitalWrite(fan3, HIGH);
+  digitalWrite(fan5, HIGH);	// Turns the 3 Inflate Fans to HIGH
+    
+  delay(120000);	// Inflate for 2 Minutes
+
+  digitalWrite(fan3, LOW);
+  digitalWrite(fan5, LOW);	// Only Set 2 Fans OFF and Remain 1 Fan On
+
+  delay(100);
+  // Night();
+}
+
+/*
+---------------------------------------------------------------------------------
+*/
+
+void retract(){
+  digitalWrite(fan1, LOW);	// Turn Off the 1 Inflate Fan
+  delay(100);
+  
+  ERF = 0;	// Set Extend/Retract Flag to 0
+  ERSF = 0;	// Set Extend/Retract Switch Flag to 0
+  
+  digitalWrite(fan2, HIGH);
+  digitalWrite(fan4, HIGH);	// Set the 2 Deflate Fans to HIGH
+
+  FF2 = 1;	// Fan Flag 2 Set to 1
+  FF4 = 1;	// Fan Flag 4 Set to 1
+    
+  delay(120000);	// Deflate for 2 Minutes
+  
+  digitalWrite(fan2, LOW);  
+  digitalWrite(fan4, LOW);	// Set the 2 Deflate Fans to LOW
+  
+  delay(100);
+
+  M1C = 0;	// Set Motor 1 Counter to 0
+  M2C = 0;	// Set Motor 2 Counter to 0
+  testRet = 0;	// Set Retract to 0
+  digitalWrite(M1R2, LOW);
+  digitalWrite(M2R2, LOW);  
+  digitalWrite(M1R1, HIGH);
+  digitalWrite(M2R1, HIGH);	// Set Motors 1 and 2 and Relay 1 to HIGH to Drive Wheels and Spool the Other Direction
+
+  while(testRet<=0){	// While Loop Allows for the Button to be Pressed Again to Turn Off All Motors
+    if(millis() - lastchange > debounceDuration){	// Similar If Block From the Loop Module
+      buttonstate2 = digitalRead(retractbutton);
+      if(buttonstate2 == LOW){
+        digitalWrite(M1R2, LOW);
+        digitalWrite(M2R2, LOW);
+        digitalWrite(M1R1, LOW);
+        digitalWrite(M2R1, LOW);	// Turns Off All Motors
+        testRet++;
+      
+      }
+    }
+  }
+
+  
+// Commented Out Hall Effect Sensor Code that Would've Been Used if the Sensors Worked 
+/*  
+  while (M1C <= W1P && M2C <= S2P); {
+    // Do Nothing
+  }
+  if (M1C >= W1P){
+    delay(50);
+    digitalWrite(M1R1, LOW);
+    while(M2C < S2P){
+      // Do Nothing While Other One Finishes
+    }
+    delay(50);
+    digitalWrite(M2R1, LOW);
+  }
+  else { // (M2C >= 10){
+    delay(50);
+    digitalWrite(M2R1, LOW);
+    while(M1C < W1P){
+      // Do Nothing While Other One Finishes
+    }
+    delay(50);
+    digitalWrite(M1R1, LOW);
+  }
+ /*
+  
+  */
+}
+
+/*
+---------------------------------------------------------------------------------
+*/
+
+void halleffect1(){
+  M1C++;
+  if(LEDstate1 == HIGH){
+    LEDstate1 = LOW;
+    digitalWrite(extendLED, LOW);   // Turns LED On and Off as Drive Wheels Rotate
+  } 
+  else{
+    LEDstate1 = HIGH;
+    digitalWrite(extendLED, HIGH);
+  }
+}
+
+/*
+---------------------------------------------------------------------------------
+*/
+
+void halleffect2(){
+  M2C++;
+  if(LEDstate2 == HIGH){
+    LEDstate2 = LOW;
+    digitalWrite(retractLED, LOW);   // Turns LED On and Off as Spool Rotates
+  } 
+  else{
+    LEDstate2 = HIGH;
+    digitalWrite(retractLED, HIGH);
+  }
+}
+
+/*
+---------------------------------------------------------------------------------
+*/
+
+void Night(){	// Night Mode (NOT FINISHED)
+  solarV = analogRead(A1);
+  if(solarV < 5){
+    digitalWrite(fan1, LOW);
+  }
+}
+
+/*
+---------------------------------------------------------------------------------
+*/
+
+void diagnotic(){	// Diagnostic Module to Read Voltage for Battery and Solar Panel
+  batteryV = analogRead(A0);
+  solarV = analogRead(A1);
+
+  Serial.println(batteryV);
+  Serial.println(solarV);
+}
